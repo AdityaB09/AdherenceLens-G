@@ -5,8 +5,10 @@ import { useParams } from "next/navigation";
 import { PatientSummaryCard } from "../../../components/patients/PatientSummaryCard";
 import { RiskExplanationPanel } from "../../../components/patients/RiskExplanationPanel";
 import { WhatIfPanel } from "../../../components/patients/WhatIfPanel";
+import { AddNoteAndAnalyzePanel } from "../../../components/patients/AddNoteAndAnalyzePanel";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 interface Note {
   id: number;
@@ -66,38 +68,49 @@ export default function PatientDetailPage() {
 
   const [data, setData] = useState<PatientDetailResponse | null>(null);
   const [risk, setRisk] = useState<RiskResult | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
-  useEffect(() => {
+  async function load() {
     if (!id) return;
-    async function load() {
-      const res = await fetch(`${API_BASE}/patients/${id}`);
-      const d: PatientDetailResponse = await res.json();
-      setData(d);
-      if (d.latestAnalysis) {
-        try {
-          const reasonsArr = JSON.parse(d.latestAnalysis.reasons || "[]");
-          setRisk({
-            score: d.latestAnalysis.score,
-            level: d.latestAnalysis.risk,
-            reasons: reasonsArr,
-            suggestions: [],
-            features: {
-              numMeds: d.regimens.length,
-              numDailyDoses: d.regimens.length,
-              hasNightDose: false,
-              negativePhrases: 0,
-              confusingPhrases: 0
-            }
-          });
-        } catch {
-          // ignore
-        }
+    const res = await fetch(`${API_BASE}/patients/${id}`);
+    const d: PatientDetailResponse = await res.json();
+    setData(d);
+    if (d.latestAnalysis) {
+      try {
+        const reasonsArr = JSON.parse(d.latestAnalysis.reasons || "[]");
+        setRisk({
+          score: d.latestAnalysis.score,
+          level: d.latestAnalysis.risk,
+          reasons: reasonsArr,
+          suggestions: [],
+          features: {
+            numMeds: d.regimens.length,
+            numDailyDoses: d.regimens.length,
+            hasNightDose: false,
+            negativePhrases: 0,
+            confusingPhrases: 0
+          }
+        });
+        setAnalysis(d.latestAnalysis);
+      } catch {
+        // ignore
       }
     }
+  }
+
+  useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const latestNoteText = data?.notes?.[0]?.text ?? "";
+
+  function handleAnalyzed(newRisk: RiskResult, newAnalysis: Analysis) {
+    setRisk(newRisk);
+    setAnalysis(newAnalysis);
+    // also reload notes so highlight updates
+    load();
+  }
 
   return (
     <main className="space-y-4">
@@ -112,19 +125,25 @@ export default function PatientDetailPage() {
           </div>
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-slate-900/60 rounded-2xl shadow-soft p-4">
-              <h2 className="text-sm font-semibold mb-2">Recent note (NLP highlight)</h2>
+              <h2 className="text-sm font-semibold mb-2">
+                Recent note (NLP highlight)
+              </h2>
               <div className="text-sm text-slate-200 max-h-56 overflow-y-auto leading-relaxed">
                 {highlightText(latestNoteText)}
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <RiskExplanationPanel risk={risk} analysis={data.latestAnalysis} />
+              <RiskExplanationPanel risk={risk} analysis={analysis} />
               <WhatIfPanel
                 patientId={data.patient.id}
                 baselineRisk={risk}
                 onUpdate={setRisk}
               />
             </div>
+            <AddNoteAndAnalyzePanel
+              patientId={data.patient.id}
+              onAnalyzed={handleAnalyzed}
+            />
           </div>
         </div>
       )}
@@ -132,12 +151,18 @@ export default function PatientDetailPage() {
   );
 }
 
-// Simple front-end NLP highlighter for med / dose / negative
+// NLP highlighter
 const meds = ["metformin", "atorvastatin", "lisinopril", "insulin"];
-const negative = ["forget", "miss", "skip", "side effect", "tired"];
+const negative = ["forget", "miss", "skip", "skipped", "tired", "side", "effect"];
 
 function highlightText(text: string) {
-  if (!text) return <span className="text-slate-400 italic">No notes yet.</span>;
+  if (!text) {
+    return (
+      <span className="text-slate-400 italic">
+        No notes yet. Add a note below to start analysis.
+      </span>
+    );
+  }
 
   const words = text.split(/\s+/);
   return (
@@ -146,22 +171,31 @@ function highlightText(text: string) {
         const lw = w.toLowerCase();
         if (meds.some(m => lw.includes(m))) {
           return (
-            <span key={idx} className="bg-sky-700/40 text-sky-200 px-1 rounded">
-              {w}{" "}
+            <span
+              key={idx}
+              className="bg-sky-700/50 text-sky-100 px-1 rounded-md mr-1"
+            >
+              {w}
             </span>
           );
         }
         if (negative.some(n => lw.includes(n))) {
           return (
-            <span key={idx} className="bg-rose-800/50 text-rose-100 px-1 rounded">
-              {w}{" "}
+            <span
+              key={idx}
+              className="bg-rose-800/70 text-rose-50 px-1 rounded-md mr-1"
+            >
+              {w}
             </span>
           );
         }
         if (/\d+mg/i.test(w)) {
           return (
-            <span key={idx} className="bg-emerald-800/40 text-emerald-100 px-1 rounded">
-              {w}{" "}
+            <span
+              key={idx}
+              className="bg-emerald-800/50 text-emerald-50 px-1 rounded-md mr-1"
+            >
+              {w}
             </span>
           );
         }

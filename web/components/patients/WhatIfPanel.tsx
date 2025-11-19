@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 interface Features {
   numMeds: number;
@@ -35,11 +36,21 @@ export function WhatIfPanel({
   baselineRisk: RiskResult | null;
   onUpdate: (risk: RiskResult) => void;
 }) {
-  const [numMeds, setNumMeds] = useState( baselineRisk?.features?.numMeds ?? 3 );
-  const [numDoses, setNumDoses] = useState( baselineRisk?.features?.numDailyDoses ?? 2 );
-  const [hasNight, setHasNight] = useState( baselineRisk?.features?.hasNightDose ?? true );
+  const [numMeds, setNumMeds] = useState(
+    baselineRisk?.features?.numMeds ?? 3
+  );
+  const [numDoses, setNumDoses] = useState(
+    baselineRisk?.features?.numDailyDoses ?? 2
+  );
+  const [hasNight, setHasNight] = useState(
+    baselineRisk?.features?.hasNightDose ?? true
+  );
   const [loading, setLoading] = useState(false);
   const [delta, setDelta] = useState<number | null>(null);
+  const [baselineScore, setBaselineScore] = useState<number | null>(
+    baselineRisk?.score ?? null
+  );
+  const [whatIfScore, setWhatIfScore] = useState<number | null>(null);
 
   async function runWhatIf() {
     setLoading(true);
@@ -52,11 +63,14 @@ export function WhatIfPanel({
           numDailyDoses: numDoses,
           hasNightDose: hasNight,
           negativePhrases: baselineRisk?.features?.negativePhrases ?? 0,
-          confusingPhrases: baselineRisk?.features?.confusingPhrases ?? 0
+          confusingPhrases:
+            baselineRisk?.features?.confusingPhrases ?? 0
         })
       });
       const data: WhatIfResponse = await res.json();
       setDelta(data.delta);
+      setBaselineScore(data.baseline.score);
+      setWhatIfScore(data.whatIf.score);
       onUpdate(data.whatIf);
     } catch (e) {
       console.error(e);
@@ -69,9 +83,11 @@ export function WhatIfPanel({
     <div className="bg-slate-900/60 rounded-2xl shadow-soft p-4 space-y-3">
       <h2 className="text-sm font-semibold">What-if simulator</h2>
       <p className="text-xs text-slate-400">
-        Adjust regimen complexity sliders to see how adherence risk changes.
+        Adjust regimen complexity sliders to see how adherence risk moves
+        along the risk ribbon.
       </p>
 
+      {/* Sliders */}
       <div className="space-y-2 text-xs">
         <div>
           <label className="flex justify-between mb-1">
@@ -107,7 +123,9 @@ export function WhatIfPanel({
             type="button"
             onClick={() => setHasNight(v => !v)}
             className={`text-xs px-3 py-1 rounded-full border ${
-              hasNight ? "bg-rose-900 border-rose-700 text-rose-100" : "bg-slate-800 border-slate-600"
+              hasNight
+                ? "bg-rose-900 border-rose-700 text-rose-100"
+                : "bg-slate-800 border-slate-600"
             }`}
           >
             {hasNight ? "Included" : "Removed"}
@@ -124,8 +142,33 @@ export function WhatIfPanel({
         {loading ? "Simulating…" : "Run what-if"}
       </button>
 
+      {/* Risk ribbon visual */}
+      {(baselineScore !== null || whatIfScore !== null) && (
+        <div className="mt-3 space-y-2 text-xs">
+          <p className="text-slate-400">Risk ribbon (0 → 1)</p>
+          <div className="relative h-3 rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-rose-500 overflow-hidden">
+            {baselineScore !== null && (
+              <div
+                className="absolute top-0 bottom-0 w-[2px] bg-slate-950 shadow-[0_0_8px_rgba(15,23,42,0.9)]"
+                style={{ left: `${baselineScore * 100}%` }}
+              />
+            )}
+            {whatIfScore !== null && (
+              <div
+                className="absolute top-[-3px] bottom-[-3px] w-[2px] bg-sky-100 shadow-[0_0_12px_rgba(56,189,248,0.9)]"
+                style={{ left: `${whatIfScore * 100}%` }}
+              />
+            )}
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-500">
+            <span>0 (low)</span>
+            <span>1 (high)</span>
+          </div>
+        </div>
+      )}
+
       {delta !== null && (
-        <p className="text-xs mt-2 text-slate-300">
+        <p className="text-xs mt-1 text-slate-300">
           New risk score change:{" "}
           <span className={delta > 0 ? "text-rose-300" : "text-emerald-300"}>
             {delta > 0 ? "+" : ""}
